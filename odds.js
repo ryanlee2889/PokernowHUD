@@ -172,6 +172,77 @@ class OutsCounter {
     }
 }
 
+class LiveHandTracker {
+    constructor() {
+        this.holeCards = null;
+        this.board = [];
+        this.inHand = false;
+    }
+
+    update(jsonLog) {
+        var logs = jsonLog.logs;
+        for (var i = logs.length - 1; i >= 0; i--) {
+            this._processMsg(logs[i].msg);
+        }
+    }
+
+    _processMsg(msg) {
+        if (msg.includes('starting hand #')) {
+            this.holeCards = null;
+            this.board = [];
+            this.inHand = true;
+        }
+        if (this.inHand) {
+            if (msg.includes('Your hand is')) {
+                var afterKeyword = msg.split('Your hand is ')[1];
+                this.holeCards = this._parseCards(afterKeyword);
+            }
+            if (msg.includes('Flop: ') || msg.includes('Turn: ') || msg.includes('River: ')) {
+                var match = msg.match(/\[([^\]]+)\]/);
+                if (match) {
+                    var self = this;
+                    var cards = match[1].split(/,\s*/).map(function(s) {
+                        return self._parseCard(s.trim());
+                    }).filter(function(c) { return c !== null; });
+                    this.board = cards;
+                }
+            }
+        }
+        if (msg.includes('ending hand #')) {
+            this.holeCards = null;
+            this.board = [];
+            this.inHand = false;
+        }
+    }
+
+    _parseCards(str) {
+        var self = this;
+        return str.split(/,\s*|\s+/).filter(function(s) { return s.trim().length > 0; })
+                  .map(function(s) { return self._parseCard(s.trim()); })
+                  .filter(function(c) { return c !== null; });
+    }
+
+    _parseCard(str) {
+        if (!str || str.length < 2) return null;
+        var suitMap = {'♥': 0, '♦': 1, '♠': 2, '♣': 3,
+                       'h': 0, 'd': 1, 's': 2, 'c': 3};
+        var rankMap = {'2':0,'3':1,'4':2,'5':3,'6':4,'7':5,'8':6,'9':7,
+                       '10':8,'T':8,'J':9,'Q':10,'K':11,'A':12};
+        var suitChar = str[str.length - 1];
+        var rankStr  = str.slice(0, str.length - 1);
+        var r = rankMap[rankStr];
+        var s = suitMap[suitChar];
+        if (r === undefined || s === undefined) return null;
+        return { r: r, s: s };
+    }
+
+    hasHoleCards() {
+        return this.holeCards !== null &&
+               this.holeCards.length === 2 &&
+               this.holeCards.every(function(c) { return c !== null; });
+    }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { HandEvaluator, MonteCarloEngine, OutsCounter };
+    module.exports = { HandEvaluator, MonteCarloEngine, OutsCounter, LiveHandTracker };
 }

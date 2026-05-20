@@ -1,4 +1,4 @@
-const { HandEvaluator, MonteCarloEngine, OutsCounter } = require('../odds');
+const { HandEvaluator, MonteCarloEngine, OutsCounter, LiveHandTracker } = require('../odds');
 
 function card(r, s) { return { r, s }; }
 // ranks: 0=2 1=3 2=4 3=5 4=6 5=7 6=8 7=9 8=T 9=J 10=Q 11=K 12=A
@@ -119,6 +119,102 @@ describe('MonteCarloEngine', () => {
         const result = engine.run([card(0,0), card(1,1)], [], 100);
         expect(result).toBeGreaterThanOrEqual(0);
         expect(result).toBeLessThanOrEqual(1);
+    });
+});
+
+describe('LiveHandTracker', () => {
+    function makeLog(msgs) {
+        var entries = msgs.slice().reverse().map(function(m, i) {
+            return { msg: m, created_at: i };
+        });
+        return { logs: entries };
+    }
+
+    test('_parseCard parses ace of hearts (A♥)', () => {
+        var t = new LiveHandTracker();
+        expect(t._parseCard('A♥')).toEqual({ r: 12, s: 0 });
+    });
+
+    test('_parseCard parses 2 of clubs (2♣)', () => {
+        var t = new LiveHandTracker();
+        expect(t._parseCard('2♣')).toEqual({ r: 0, s: 3 });
+    });
+
+    test('_parseCard parses 10 of diamonds (10♦)', () => {
+        var t = new LiveHandTracker();
+        expect(t._parseCard('10♦')).toEqual({ r: 8, s: 1 });
+    });
+
+    test('_parseCard parses king of spades (K♠)', () => {
+        var t = new LiveHandTracker();
+        expect(t._parseCard('K♠')).toEqual({ r: 11, s: 2 });
+    });
+
+    test('extracts hole cards from "Your hand is" message', () => {
+        var t = new LiveHandTracker();
+        var log = makeLog([
+            '"Table" starting hand #1 (dealer: "Player1")',
+            'Your hand is A♥, K♦'
+        ]);
+        t.update(log);
+        expect(t.holeCards).toEqual([{ r: 12, s: 0 }, { r: 11, s: 1 }]);
+    });
+
+    test('extracts flop board cards', () => {
+        var t = new LiveHandTracker();
+        var log = makeLog([
+            '"Table" starting hand #1 (dealer: "Player1")',
+            'Your hand is A♥, K♦',
+            'Flop: [Q♠, J♣, 2♥]'
+        ]);
+        t.update(log);
+        expect(t.board).toEqual([{ r: 10, s: 2 }, { r: 9, s: 3 }, { r: 0, s: 0 }]);
+    });
+
+    test('clears state on new hand start', () => {
+        var t = new LiveHandTracker();
+        var log1 = makeLog([
+            '"Table" starting hand #1 (dealer: "Player1")',
+            'Your hand is A♥, K♦'
+        ]);
+        t.update(log1);
+        expect(t.holeCards).not.toBeNull();
+
+        var log2 = makeLog([
+            '"Table" ending hand #1',
+            '"Table" starting hand #2 (dealer: "Player2")'
+        ]);
+        t.update(log2);
+        expect(t.holeCards).toBeNull();
+        expect(t.board).toEqual([]);
+    });
+
+    test('clears state on hand end', () => {
+        var t = new LiveHandTracker();
+        var log1 = makeLog([
+            '"Table" starting hand #1 (dealer: "Player1")',
+            'Your hand is A♥, K♦'
+        ]);
+        t.update(log1);
+
+        var log2 = makeLog(['"Table" ending hand #1']);
+        t.update(log2);
+        expect(t.holeCards).toBeNull();
+    });
+
+    test('hasHoleCards returns false with no cards', () => {
+        var t = new LiveHandTracker();
+        expect(t.hasHoleCards()).toBe(false);
+    });
+
+    test('hasHoleCards returns true after deal', () => {
+        var t = new LiveHandTracker();
+        var log = makeLog([
+            '"Table" starting hand #1 (dealer: "Player1")',
+            'Your hand is A♥, K♦'
+        ]);
+        t.update(log);
+        expect(t.hasHoleCards()).toBe(true);
     });
 });
 
