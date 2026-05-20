@@ -1115,6 +1115,8 @@ class Aggregator{
 		var string = "";
 		if(statName == "H"){
 			string = "("+data[1]+")"
+		}else if(data[1] === 0){
+			string = "-";
 		}else if(percentStats.includes(statName)){
 			string = ((data[0]/data[1])*100).toFixed(1);
 		}else{
