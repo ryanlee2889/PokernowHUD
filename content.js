@@ -25,11 +25,12 @@ class Player {
 class Settings {
 	
 	constructor(){
-		
+
 		var self = this;
 		this.statsToShow = [];
 		this.recordBox = true;
 		this.showingHUD = true;
+		this.showingOdds = true;
 		this.panelOffset = this.getPanelOffset();
 		chrome.storage.local.get(['settings'], function(result) {
 			//console.log('Value currently is ' + result.settings);
@@ -52,15 +53,25 @@ class Settings {
 	}
 	
 	checkIfShowingHUD(){
-		
+
 		var self = this;
 		chrome.storage.local.get(['settings'], function(result) {
 			self.showingHUD = result.settings.showingHUD;
 		});
 		return this.showingHUD;
-		
+
 	}
-	
+
+	checkIfShowingOdds(){
+		var self = this;
+		chrome.storage.local.get(['settings'], function(result) {
+			if (result.settings && result.settings.showOdds !== undefined) {
+				self.showingOdds = result.settings.showOdds;
+			}
+		});
+		return this.showingOdds;
+	}
+
 	getPanelOffset(){
 		
 		var self = this;
@@ -281,7 +292,7 @@ class HUD { //class for hud graphical overlay. gets made by
 	}
 	
 	HUDloop(iteration){
-		
+
 		this.sleep(500).then(() => {
 			if(this.settings.checkIfShowingHUD()){
 				this.initializeHUD();
@@ -290,9 +301,14 @@ class HUD { //class for hud graphical overlay. gets made by
                 scraper.getLog();
             } */
 			getStats(this.aggregator); //every update of the HUD retrieve stats from memory and store them in the aggregator stats variable
+			if (settings.checkIfShowingOdds()) {
+				oddsPanel.update();
+			} else {
+				oddsPanel.hide();
+			}
             this.HUDloop(iteration+1);
 		})
-		
+
 	}
 	
 	sleep(ms) { //https://www.sitepoint.com/delay-sleep-pause-wait/
@@ -416,6 +432,94 @@ class HUD { //class for hud graphical overlay. gets made by
 		return players;
 	}
 	
+}
+
+class OddsPanel {
+
+    constructor(tracker, engine, outsCounter) {
+        this.tracker = tracker;
+        this.engine = engine;
+        this.outsCounter = outsCounter;
+    }
+
+    hide() {
+        var el = document.getElementById('oddsPanel');
+        if (el) el.remove();
+    }
+
+    update() {
+        this.hide();
+
+        if (!this.tracker.hasHoleCards()) return;
+
+        var holeCards = this.tracker.holeCards;
+        var board     = this.tracker.board;
+
+        var winPct = this.engine.run(holeCards, board, 1000);
+        var outs   = this.outsCounter.count(holeCards, board);
+
+        var div = document.createElement('div');
+        div.id = 'oddsPanel';
+        div.style.cssText = [
+            'position:absolute',
+            'background:rgba(35,84,92,0.92)',
+            'color:white',
+            'padding:3px 8px',
+            'border-radius:4px',
+            'border:1px solid #4ecdc4',
+            'font-size:12px',
+            'z-index:99',
+            'white-space:nowrap',
+            'pointer-events:none'
+        ].join(';');
+
+        var winStr = 'Win: ' + (winPct * 100).toFixed(1) + '%';
+        var outStr = ' · Outs: ' + (outs !== null ? outs : '--');
+        var potStr = ' · Pot: ' + this._potOddsStr(winPct);
+
+        div.innerText = winStr + outStr + potStr;
+
+        var youDiv   = document.querySelector('.you-player');
+        var hudDiv   = document.getElementById('HUD');
+        var tableDiv = document.querySelector('.table');
+        if (!youDiv || !hudDiv || !tableDiv) return;
+
+        var tableRect = tableDiv.getBoundingClientRect();
+        var youRect   = youDiv.getBoundingClientRect();
+
+        div.style.left = (youRect.left - tableRect.left + youRect.width / 2 - 90) + 'px';
+        div.style.top  = (youRect.top  - tableRect.top  - 28) + 'px';
+
+        hudDiv.appendChild(div);
+    }
+
+    _potOddsStr(winPct) {
+        var pot = null;
+        var callAmt = null;
+
+        try {
+            var potEl = document.querySelector('.table-pot-size');
+            if (potEl) pot = parseFloat(potEl.innerText.replace(/[^0-9.]/g, ''));
+        } catch(e) {}
+
+        try {
+            var buttons = document.querySelectorAll('button');
+            for (var i = 0; i < buttons.length; i++) {
+                var txt = (buttons[i].innerText || '').trim().toLowerCase();
+                if (txt.indexOf('call') === 0) {
+                    var amt = txt.replace(/[^0-9.]/g, '');
+                    if (amt) { callAmt = parseFloat(amt); break; }
+                }
+            }
+        } catch(e) {}
+
+        if (pot === null || callAmt === null || isNaN(pot) || isNaN(callAmt) || callAmt <= 0) {
+            return '--';
+        }
+
+        var breakEven = callAmt / (pot + callAmt);
+        return (winPct >= breakEven) ? '✓' : '✗';
+    }
 }
 
 class HandBuilder{ //gets called by execute()
@@ -1185,6 +1289,8 @@ class LogScraper{
                 }
             }
         }
+
+        liveTracker.update(jsonLog);
     }
 	
 	setInitialCreatedAt(text, self){
@@ -1306,6 +1412,12 @@ chrome.runtime.onMessage.addListener(
 var builder = new HandBuilder(aggregator, settings);
 var hud = new HUD(aggregator, settings, builder);
 var scraper = new LogScraper();
+
+var _evaluator   = new HandEvaluator();
+var _monte       = new MonteCarloEngine(_evaluator);
+var _outsCounter = new OutsCounter(_evaluator);
+var liveTracker  = new LiveHandTracker();
+var oddsPanel    = new OddsPanel(liveTracker, _monte, _outsCounter);
 
 function tester(){
     scraper.getLog();
