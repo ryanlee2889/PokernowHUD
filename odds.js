@@ -142,6 +142,36 @@ class MonteCarloEngine {
     }
 }
 
+class OutsCounter {
+    constructor(evaluator) {
+        this.evaluator = evaluator;
+    }
+
+    count(holeCards, board) {
+        if (!board || board.length === 0) return null;
+
+        var known = holeCards.concat(board);
+        var deck = [];
+        for (var r = 0; r < 13; r++) {
+            for (var s = 0; s < 4; s++) {
+                var excluded = false;
+                for (var i = 0; i < known.length; i++) {
+                    if (known[i].r === r && known[i].s === s) { excluded = true; break; }
+                }
+                if (!excluded) deck.push({ r: r, s: s });
+            }
+        }
+
+        var currentCategory = Math.floor(this.evaluator.evaluate(holeCards.concat(board)) / 1e8);
+        var outs = 0;
+        for (var j = 0; j < deck.length; j++) {
+            var newCategory = Math.floor(this.evaluator.evaluate(holeCards.concat(board).concat([deck[j]])) / 1e8);
+            if (newCategory > currentCategory) outs++;
+        }
+        return outs;
+    }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { HandEvaluator, MonteCarloEngine };
+    module.exports = { HandEvaluator, MonteCarloEngine, OutsCounter };
 }

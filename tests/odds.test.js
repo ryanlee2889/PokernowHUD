@@ -1,4 +1,4 @@
-const { HandEvaluator, MonteCarloEngine } = require('../odds');
+const { HandEvaluator, MonteCarloEngine, OutsCounter } = require('../odds');
 
 function card(r, s) { return { r, s }; }
 // ranks: 0=2 1=3 2=4 3=5 4=6 5=7 6=8 7=9 8=T 9=J 10=Q 11=K 12=A
@@ -119,5 +119,49 @@ describe('MonteCarloEngine', () => {
         const result = engine.run([card(0,0), card(1,1)], [], 100);
         expect(result).toBeGreaterThanOrEqual(0);
         expect(result).toBeLessThanOrEqual(1);
+    });
+});
+
+describe('OutsCounter', () => {
+    const counter = new OutsCounter(new HandEvaluator());
+
+    test('returns null preflop (no board)', () => {
+        const result = counter.count([card(12,0), card(11,0)], []);
+        expect(result).toBeNull();
+    });
+
+    test('flush draw on flop: 9 hearts + 14 pair-making cards = 23 outs', () => {
+        // A♥ K♥ on board 2♥ 7♥ Q♠ (high card currently)
+        // 9 remaining hearts complete flush; A/K/Q/7/2 non-hearts make pairs
+        const holeCards = [card(12,0), card(11,0)];
+        const board = [card(0,0), card(5,0), card(10,2)];
+        const result = counter.count(holeCards, board);
+        expect(result).toBe(23);
+    });
+
+    test('open-ended straight draw: 8 straight outs + 15 pair outs = 23 total', () => {
+        // 6h 7d on board 8s 9c 2h (high card currently)
+        // 5/T complete straight (8 cards); all board/hole ranks pair (15 cards)
+        const holeCards = [card(4,0), card(5,1)];
+        const board = [card(6,2), card(7,3), card(0,0)];
+        const result = counter.count(holeCards, board);
+        expect(result).toBe(23);
+    });
+
+    test('made royal flush has 0 outs', () => {
+        // A♥ K♥ on board Q♥ J♥ T♥ → royal flush, max category, nothing improves it
+        const holeCards = [card(12,0), card(11,0)];
+        const board = [card(10,0), card(9,0), card(8,0)];
+        const result = counter.count(holeCards, board);
+        expect(result).toBe(0);
+    });
+
+    test('counts outs on turn (4 board cards)', () => {
+        // A♥ K♥ on board 2♥ 7♥ Q♠ 3♣ (high card currently)
+        // 9 hearts + 16 non-heart pair cards = 25
+        const holeCards = [card(12,0), card(11,0)];
+        const board = [card(0,0), card(5,0), card(10,2), card(1,3)];
+        const result = counter.count(holeCards, board);
+        expect(result).toBe(25);
     });
 });
