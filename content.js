@@ -294,19 +294,25 @@ class HUD { //class for hud graphical overlay. gets made by
 	HUDloop(iteration){
 
 		this.sleep(500).then(() => {
-			if(this.settings.checkIfShowingHUD()){
-				this.initializeHUD();
-			}else{this.clearDisplay();}
-            /* if(iteration % 8 == 0){ //only request logs every 4 seconds
-                scraper.getLog();
-            } */
-			getStats(this.aggregator); //every update of the HUD retrieve stats from memory and store them in the aggregator stats variable
-			if (settings.checkIfShowingOdds()) {
-				oddsPanel.update();
-			} else {
-				oddsPanel.hide();
+			if (!chrome.runtime?.id) return; // extension was reloaded — stop loop
+			try {
+				if(this.settings.checkIfShowingHUD()){
+					this.initializeHUD();
+				}else{this.clearDisplay();}
+                /* if(iteration % 8 == 0){ //only request logs every 4 seconds
+                    scraper.getLog();
+                } */
+				getStats(this.aggregator); //every update of the HUD retrieve stats from memory and store them in the aggregator stats variable
+				if (settings.checkIfShowingOdds()) {
+					oddsPanel.update();
+				} else {
+					oddsPanel.hide();
+				}
+				this.HUDloop(iteration+1);
+			} catch(e) {
+				if (e.message && e.message.includes('Extension context invalidated')) return;
+				throw e;
 			}
-            this.HUDloop(iteration+1);
 		})
 
 	}
