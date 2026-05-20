@@ -95,6 +95,53 @@ class HandEvaluator {
     }
 }
 
+class MonteCarloEngine {
+    constructor(evaluator) {
+        this.evaluator = evaluator;
+    }
+
+    run(holeCards, board, sims) {
+        sims = sims || 1000;
+        var known = holeCards.concat(board);
+        var deck = this._buildDeck(known);
+        var boardNeeded = 5 - board.length;
+        var wins = 0, ties = 0;
+
+        for (var i = 0; i < sims; i++) {
+            this._shuffle(deck);
+            var oppHole = [deck[0], deck[1]];
+            var runBoard = board.concat(deck.slice(2, 2 + boardNeeded));
+            var heroScore = this.evaluator.evaluate(holeCards.concat(runBoard));
+            var oppScore  = this.evaluator.evaluate(oppHole.concat(runBoard));
+            if (heroScore > oppScore) wins++;
+            else if (heroScore === oppScore) ties += 0.5;
+        }
+
+        return (wins + ties) / sims;
+    }
+
+    _buildDeck(exclude) {
+        var deck = [];
+        for (var r = 0; r < 13; r++) {
+            for (var s = 0; s < 4; s++) {
+                var excluded = false;
+                for (var i = 0; i < exclude.length; i++) {
+                    if (exclude[i].r === r && exclude[i].s === s) { excluded = true; break; }
+                }
+                if (!excluded) deck.push({ r: r, s: s });
+            }
+        }
+        return deck;
+    }
+
+    _shuffle(arr) {
+        for (var i = arr.length - 1; i > 0; i--) {
+            var j = Math.floor(Math.random() * (i + 1));
+            var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+        }
+    }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { HandEvaluator };
+    module.exports = { HandEvaluator, MonteCarloEngine };
 }

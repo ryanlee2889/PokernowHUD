@@ -1,4 +1,4 @@
-const { HandEvaluator } = require('../odds');
+const { HandEvaluator, MonteCarloEngine } = require('../odds');
 
 function card(r, s) { return { r, s }; }
 // ranks: 0=2 1=3 2=4 3=5 4=6 5=7 6=8 7=9 8=T 9=J 10=Q 11=K 12=A
@@ -87,5 +87,37 @@ describe('HandEvaluator', () => {
         ]);
         const quadsBaseline = ev.evaluate([card(12,0),card(12,1),card(12,2),card(12,3),card(11,0)]);
         expect(score).toBe(quadsBaseline);
+    });
+});
+
+describe('MonteCarloEngine', () => {
+    const engine = new MonteCarloEngine(new HandEvaluator());
+
+    test('AA preflop wins ~85% vs random hand', () => {
+        const holeCards = [card(12, 0), card(12, 1)];
+        const result = engine.run(holeCards, [], 2000);
+        expect(result).toBeGreaterThan(0.78);
+        expect(result).toBeLessThan(0.92);
+    });
+
+    test('72o preflop wins ~34% vs random hand', () => {
+        const holeCards = [card(5, 0), card(0, 1)]; // 7h 2d
+        const result = engine.run(holeCards, [], 2000);
+        expect(result).toBeGreaterThan(0.26);
+        expect(result).toBeLessThan(0.42);
+    });
+
+    test('made nut flush on river wins >90%', () => {
+        // A♥ K♥ on board Q♥ J♥ 2♥ 8♣ 3♦ → nut flush
+        const holeCards = [card(12,0), card(11,0)];
+        const board = [card(10,0), card(9,0), card(0,0), card(6,3), card(1,1)];
+        const result = engine.run(holeCards, board, 500);
+        expect(result).toBeGreaterThan(0.90);
+    });
+
+    test('result is between 0 and 1', () => {
+        const result = engine.run([card(0,0), card(1,1)], [], 100);
+        expect(result).toBeGreaterThanOrEqual(0);
+        expect(result).toBeLessThanOrEqual(1);
     });
 });
