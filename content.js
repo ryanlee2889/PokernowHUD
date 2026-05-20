@@ -32,54 +32,45 @@ class Settings {
 		this.showingHUD = true;
 		this.showingOdds = true;
 		this.panelOffset = this.getPanelOffset();
-		chrome.storage.local.get(['settings'], function(result) {
-			//console.log('Value currently is ' + result.settings);
-			//self.setStatsToShow(result.settings.stats);
+		try { chrome.storage.local.get(['settings'], function(result) {
 			self.statsToShow = result.settings.panelSettings;
-			//console.log(result.settings.stats);
 			self.recordBox = result.settings.recordBox;
-		});
+		}); } catch(e) {}
 		
 	}
 	
 	checkIfRecordingHands(){
-		
 		var self = this;
-		chrome.storage.local.get(['settings'], function(result) {
+		try { chrome.storage.local.get(['settings'], function(result) {
 			self.recordBox = result.settings.recordBox;
-		});
+		}); } catch(e) {}
 		return this.recordBox;
-		
 	}
 	
 	checkIfShowingHUD(){
-
 		var self = this;
-		chrome.storage.local.get(['settings'], function(result) {
+		try { chrome.storage.local.get(['settings'], function(result) {
 			self.showingHUD = result.settings.showingHUD;
-		});
+		}); } catch(e) {}
 		return this.showingHUD;
-
 	}
 
 	checkIfShowingOdds(){
 		var self = this;
-		chrome.storage.local.get(['settings'], function(result) {
+		try { chrome.storage.local.get(['settings'], function(result) {
 			if (result.settings && result.settings.showOdds !== undefined) {
 				self.showingOdds = result.settings.showOdds;
 			}
-		});
+		}); } catch(e) {}
 		return this.showingOdds;
 	}
 
 	getPanelOffset(){
-		
 		var self = this;
-		chrome.storage.local.get(['settings'], function(result) {
+		try { chrome.storage.local.get(['settings'], function(result) {
 			self.panelOffset = result.settings.panelOffset;
-		});
+		}); } catch(e) {}
 		return this.panelOffset;
-		
 	}
 	
 }
@@ -259,6 +250,7 @@ class HUD { //class for hud graphical overlay. gets made by
 		const config = { attributes: true, childList: true, subtree: true };
 		
 		const callback = function(mutationsList, observer) {
+			if (!chrome.runtime?.id) { observer.disconnect(); return; }
 			scraper.getLog();
 		};
 
