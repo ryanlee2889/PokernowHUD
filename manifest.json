@@ -13,8 +13,8 @@
 
 	"content_scripts": [
 		{
-			"matches": ["https://www.pokernow.club/games/*"],
-			"js": ["thirdParty/jquery.min.js", "content.js"]
+			"matches": ["https://www.pokernow.com/games/*"],
+			"js": ["thirdParty/jquery.min.js", "odds.js", "content.js"]
 		}
 	],
 	"action": {
