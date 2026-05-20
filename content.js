@@ -440,6 +440,13 @@ class OddsPanel {
         this.tracker = tracker;
         this.engine = engine;
         this.outsCounter = outsCounter;
+        this._cachedKey = null;
+        this._cachedWinPct = null;
+        this._cachedOuts = null;
+    }
+
+    _stateKey(holeCards, board) {
+        return JSON.stringify(holeCards) + '|' + JSON.stringify(board);
     }
 
     hide() {
@@ -450,13 +457,26 @@ class OddsPanel {
     update() {
         this.hide();
 
-        if (!this.tracker.hasHoleCards()) return;
+        if (!this.tracker.hasHoleCards()) {
+            this._cachedKey = null;
+            return;
+        }
 
         var holeCards = this.tracker.holeCards;
         var board     = this.tracker.board;
+        var key       = this._stateKey(holeCards, board);
 
-        var winPct = this.engine.run(holeCards, board, 1000);
-        var outs   = this.outsCounter.count(holeCards, board);
+        var winPct, outs;
+        if (key === this._cachedKey) {
+            winPct = this._cachedWinPct;
+            outs   = this._cachedOuts;
+        } else {
+            winPct = this.engine.run(holeCards, board, 1000);
+            outs   = this.outsCounter.count(holeCards, board);
+            this._cachedKey    = key;
+            this._cachedWinPct = winPct;
+            this._cachedOuts   = outs;
+        }
 
         var div = document.createElement('div');
         div.id = 'oddsPanel';
