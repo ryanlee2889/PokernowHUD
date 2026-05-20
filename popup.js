@@ -160,6 +160,7 @@ class Main {
 		
 		this.watchRecordCheckbox();
 		this.watchHUDCheckbox();
+		this.watchOddsCheckbox();
 		this.watchSetOffsets();
 
 		$('body').on('DOMSubtreeModified', '#tabs-1', function(){
@@ -198,7 +199,7 @@ class Main {
 	}
 	
 	watchHUDCheckbox(){
-		
+
 		var self = this;
 		var showHUD = document.getElementById("showingHUDBox");
 		showHUD.addEventListener('change', function() {
@@ -206,9 +207,17 @@ class Main {
 			self.saveState();
 			//self.updateShow();
 		});
-		
+
 	}
-	
+
+	watchOddsCheckbox(){
+		var self = this;
+		var showOdds = document.getElementById("showOddsBox");
+		showOdds.addEventListener('change', function() {
+			self.saveState();
+		});
+	}
+
 	updateRecord(settings){
 		
 		chrome.runtime.sendMessage({"record": settings.recordBox, "command": "updateRecord"}, function(response) {
@@ -243,6 +252,7 @@ class Main {
 			self.settings = result.settings;
 			self.restoreRecordBox(result.settings.recordBox);
 			self.restoreShowBox(result.settings.showingHUD);
+			self.restoreOddsBox(result.settings.showOdds);
 			self.restorePanelOffsetBoxes(result.settings.panelOffset);
 			self.loadComplete = self.panelTab.restorePanelSettings(panelSettings);
 			console.log('Value currently is ' + result.key);
@@ -253,7 +263,12 @@ class Main {
 	restoreShowBox(state){
 		document.getElementById("showingHUDBox").checked = state;
 	}
-	
+
+	restoreOddsBox(state){
+		var box = document.getElementById("showOddsBox");
+		if (box) box.checked = (state !== false);
+	}
+
 	restoreRecordBox(state){
 		document.getElementById("recordBox").checked = state;
 	}
@@ -278,6 +293,7 @@ class Main {
 		console.log(document.getElementById("recordBox").checked);
 		settings["recordBox"] = document.getElementById("recordBox").checked;
 		settings["showingHUD"] = document.getElementById("showingHUDBox").checked;
+		settings["showOdds"] = document.getElementById("showOddsBox").checked;
 		var yOffset = parseInt(document.getElementById("yOffsetBox").value);
 		var xOffset = parseInt(document.getElementById("xOffsetBox").value);
 		settings["panelOffset"] = [xOffset,yOffset];
