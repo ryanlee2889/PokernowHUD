@@ -84,7 +84,8 @@ class HandEvaluator {
         var pairs = sc.filter(function(e){ return e[1] === 2; })
                       .map(function(e){ return parseInt(e[0]); })
                       .sort(function(a,b){ return b-a; });
-        var kicker = parseInt(sc.find(function(e){ return e[1] === 1; })[0]);
+        var kickerEntry = sc.find(function(e){ return e[1] === 1; });
+        var kicker = kickerEntry ? parseInt(kickerEntry[0]) : 0;
         return pairs[0] * 169 + pairs[1] * 13 + kicker;
     }
 
@@ -177,6 +178,8 @@ class LiveHandTracker {
         this.holeCards = null;
         this.board = [];
         this.inHand = false;
+        this.dealer = null;
+        this.playerOrder = []; // [SB, BB, UTG, ..., CO, BTN] after rotation
     }
 
     update(jsonLog) {
@@ -191,8 +194,27 @@ class LiveHandTracker {
             this.holeCards = null;
             this.board = [];
             this.inHand = true;
+            this.playerOrder = [];
+            var dealerMatch = msg.match(/dealer: "([^"]+)"/);
+            this.dealer = dealerMatch ? dealerMatch[1] : null;
         }
         if (this.inHand) {
+            if (msg.includes('Player stacks:')) {
+                var parts = msg.replace('Player stacks: ', '').split(' | ');
+                var players = [];
+                for (var i = 0; i < parts.length; i++) {
+                    var m = parts[i].match(/"([^"]+)"/);
+                    if (m) players.push(m[1]);
+                }
+                if (this.dealer) {
+                    var guard = players.length;
+                    while (guard-- > 0 && players.length > 0 &&
+                           players[players.length - 1] !== this.dealer) {
+                        players.push(players.shift());
+                    }
+                }
+                this.playerOrder = players;
+            }
             if (msg.includes('Your hand is')) {
                 var afterKeyword = msg.split('Your hand is ')[1];
                 this.holeCards = this._parseCards(afterKeyword);
@@ -243,6 +265,77 @@ class LiveHandTracker {
     }
 }
 
+class PreflopAdvisor {
+    constructor() {
+        this._tiers = this._buildTiers();
+    }
+
+    _buildTiers() {
+        var t = {};
+        var add = function(hands, tier) { hands.forEach(function(h) { t[h] = tier; }); };
+        add(['AA','KK','QQ','AKs','AKo'], 1);
+        add(['JJ','TT','AQs','AQo','AJs','KQs'], 2);
+        add(['99','88','ATs','KJs','KTs','QJs','JTs','AJo','KQo'], 3);
+        add(['77','66','55','44','33','22',
+             'A9s','A8s','A7s','A6s','A5s','A4s','A3s','A2s',
+             'K9s','Q9s','J9s','T9s','98s','87s','76s','65s','54s',
+             'KJo','QJo'], 4);
+        add(['ATo','A9o','A8o','KTo','K8s','Q8s','J8s','T8s',
+             '97s','86s','75s','64s','53s','43s','QTo','JTo'], 5);
+        return t;
+    }
+
+    classify(holeCards) {
+        var ranks = ['2','3','4','5','6','7','8','9','T','J','Q','K','A'];
+        var r1 = holeCards[0].r, r2 = holeCards[1].r;
+        var s1 = holeCards[0].s, s2 = holeCards[1].s;
+        if (r1 === r2) return ranks[r1] + ranks[r2];
+        var hi = Math.max(r1, r2), lo = Math.min(r1, r2);
+        return ranks[hi] + ranks[lo] + (s1 === s2 ? 's' : 'o');
+    }
+
+    advise(holeCards, facingRaise, position) {
+        var hand = this.classify(holeCards);
+        var tier = this._tiers[hand] || 6;
+        var action, color;
+
+        // Max tier to open-raise per position (higher = wider range)
+        var openLimit = 3; // default: middle position
+        if (position === 'BTN')              openLimit = 5;
+        else if (position === 'CO')          openLimit = 4;
+        else if (position === 'HJ')          openLimit = 4;
+        else if (position === 'SB')          openLimit = 4;
+        else if (position === 'BB')          openLimit = 6; // BB can defend wide
+        else if (position === 'EP')          openLimit = 2;
+
+        if (!facingRaise) {
+            if (position === 'BB') {
+                // BB already in — no raise to face, just note hand strength
+                action = tier <= 2 ? 'Raise (squeeze)' : 'Check';
+                color  = tier <= 2 ? '#00c853' : '#90a4ae';
+            } else if (tier <= openLimit) {
+                var openColors = ['#00c853','#00c853','#76ff03','#ffd600','#ff9100','#ff6d00'];
+                action = 'Raise';
+                color  = openColors[Math.min(tier - 1, 5)];
+            } else if (tier === openLimit + 1) {
+                action = 'Raise/Fold';
+                color  = '#ff6d00';
+            } else {
+                action = 'Fold';
+                color  = '#ff3d00';
+            }
+        } else {
+            if (tier === 1) { action = '3-Bet/Call';  color = '#00c853'; }
+            else if (tier === 2) { action = 'Call/3-Bet'; color = '#76ff03'; }
+            else if (tier === 3) { action = position === 'BTN' || position === 'CO' ? 'Call/3-Bet' : 'Call'; color = '#ffd600'; }
+            else if (tier === 4) { action = position === 'BTN' || position === 'CO' ? 'Call' : 'Call/Fold'; color = '#ff9100'; }
+            else if (tier === 5) { action = position === 'BTN' ? 'Call/Fold' : 'Fold'; color = '#ff6d00'; }
+            else                 { action = 'Fold'; color = '#ff3d00'; }
+        }
+        return { hand: hand, action: action, color: color };
+    }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { HandEvaluator, MonteCarloEngine, OutsCounter, LiveHandTracker };
+    module.exports = { HandEvaluator, MonteCarloEngine, OutsCounter, LiveHandTracker, PreflopAdvisor };
 }

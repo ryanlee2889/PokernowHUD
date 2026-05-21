@@ -1,0 +1,5 @@
+{"type":"server-started","port":63234,"host":"0.0.0.0","url_host":"localhost","url":"http://localhost:63234","screen_dir":"/home/alse/Projects/PokernowHUD/.superpowers/brainstorm/9333-1779254049/content","state_dir":"/home/alse/Projects/PokernowHUD/.superpowers/brainstorm/9333-1779254049/state"}
+{"type":"screen-added","file":"/home/alse/Projects/PokernowHUD/.superpowers/brainstorm/9333-1779254049/content/placement.html"}
+{"source":"user-event","type":"click","text":"ODDS\n           67.3% · 9 outs · ✓ call\n        \n        Above your hole cards\n      \n    \n    \n      B — Near Hole Cards\n      Appears just above your dealt cards. Contextually placed but position depends on table layout.","choice":"b","id":null,"timestamp":1779254101344}
+{"type":"screen-added","file":"/home/alse/Projects/PokernowHUD/.superpowers/brainstorm/9333-1779254049/content/waiting-1.html"}
+{"type":"server-stopped","reason":"idle timeout"}

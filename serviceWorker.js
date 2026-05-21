@@ -111,18 +111,22 @@ chrome.runtime.onMessage.addListener(
 			});
 			sendResponse({"confirmation": "success"});
 		}
-		if(request.command == "requestServerAnalysis"){ //all serverside code has been moved to the background script.
+		if(request.command == "requestServerAnalysis"){
 			var handLines = request.handLines;
 			var stats = request.stats;
-            console.log(stats);
-            var newStats = analyze(stats, handLines);
-			var response = newStats
-			console.log(response);
-			chrome.storage.local.set({"stats":response}, function() { //initialize settings storage
-				console.log("updated stats with new stats");
-			});
-			sendResponse({"confirmation": "success"});
-			incrementHandCount();
+            console.log('[SW] requestServerAnalysis received, handLines[0]=' + handLines[0]);
+            try {
+                var newStats = analyze(stats, handLines);
+                console.log('[SW] analyze succeeded, players in H:', Object.keys(newStats['H'] || {}));
+                chrome.storage.local.set({"stats": newStats}, function() {
+                    console.log('[SW] stats saved to storage');
+                });
+                sendResponse({"confirmation": "success"});
+                incrementHandCount();
+            } catch(e) {
+                console.log('[SW] analyze THREW:', e.message, e.stack);
+                sendResponse({"confirmation": "error", "error": e.message});
+            }
 		}
 		/* if(request.command == "getSettings"){
 			sendResponse({"stats":checked});

@@ -466,8 +466,8 @@ document.addEventListener('DOMContentLoaded', function() {
 function clearStats(){
 	console.log("clear stats");
 	chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-		chrome.tabs.sendMessage(tabs[0].id, {"command": "cleared"}, function(response) {// doesn't tell content.js to get stats from memory, rather tells content.js to set aggregator.stats to data messaged
-			console.log(response.confirmation);
+		chrome.tabs.sendMessage(tabs[0].id, {"command": "cleared"}, function(response) {
+			if (response) console.log(response.confirmation);
 		});
 	});
 }

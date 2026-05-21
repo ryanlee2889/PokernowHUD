@@ -118,6 +118,8 @@ class Panel { //gets made by HUD
 		//if(statsToDisplay == null){statsToDisplay = ["VPIP", "PFR", "AF"]}
 		var tableSize = this.aggregator.handed(this.playerNumber);
 		var username = player.username;
+        var vpipPlayers = Object.keys((stats && stats['VPIP']) || {});
+        console.log('[HUD] display lookup: username=' + username + ' tableSize=' + tableSize + ' vpipPlayers=' + JSON.stringify(vpipPlayers));
 		var string = "";
 		for(var k=0; k<lines.length-1; k++){ //for each line
 			if(!(lines[k].length == 0) && !(k==0)){
@@ -291,9 +293,9 @@ class HUD { //class for hud graphical overlay. gets made by
 				if(this.settings.checkIfShowingHUD()){
 					this.initializeHUD();
 				}else{this.clearDisplay();}
-                /* if(iteration % 8 == 0){ //only request logs every 4 seconds
+                if(iteration % 4 == 0){
                     scraper.getLog();
-                } */
+                }
 				getStats(this.aggregator); //every update of the HUD retrieve stats from memory and store them in the aggregator stats variable
 				if (settings.checkIfShowingOdds()) {
 					oddsPanel.update();
@@ -416,7 +418,9 @@ class HUD { //class for hud graphical overlay. gets made by
             var currentPlayer = playerDivs[i];
             if( ! currentPlayer.classList.contains("table-player-seat") ){
                 var nameDiv = currentPlayer.getElementsByClassName("table-player-name")[0].children[0];
-                var name = nameDiv.innerHTML.replaceAll(" ", "__");
+                var rawName = nameDiv.innerText || nameDiv.textContent || '';
+                if (rawName.includes(' @ ')) rawName = rawName.split(' @ ')[0];
+                var name = rawName.trim().replaceAll(" ", "__");
                 var styles = window.getComputedStyle(playerDivs[i]);
                 var x = styles.getPropertyValue("left");
                 var y = styles.getPropertyValue("top");
@@ -434,10 +438,11 @@ class HUD { //class for hud graphical overlay. gets made by
 
 class OddsPanel {
 
-    constructor(tracker, engine, outsCounter) {
+    constructor(tracker, engine, outsCounter, preflopAdvisor) {
         this.tracker = tracker;
         this.engine = engine;
         this.outsCounter = outsCounter;
+        this.preflopAdvisor = preflopAdvisor;
         this._cachedKey = null;
         this._cachedWinPct = null;
         this._cachedOuts = null;
@@ -469,7 +474,9 @@ class OddsPanel {
             winPct = this._cachedWinPct;
             outs   = this._cachedOuts;
         } else {
-            winPct = this.engine.run(holeCards, board, 1000);
+            var total = 0;
+            for (var r = 0; r < 3; r++) { total += this.engine.run(holeCards, board, 1000); }
+            winPct = total / 3;
             outs   = this.outsCounter.count(holeCards, board);
             this._cachedKey    = key;
             this._cachedWinPct = winPct;
@@ -495,41 +502,123 @@ class OddsPanel {
         var outStr = ' · Outs: ' + (outs !== null ? outs : '--');
         var potStr = ' · Pot: ' + this._potOddsStr(winPct);
 
-        div.innerText = winStr + outStr + potStr;
-
         var youDiv   = document.querySelector('.you-player');
         var hudDiv   = document.getElementById('HUD');
         var tableDiv = document.querySelector('.table');
         if (!youDiv || !hudDiv || !tableDiv) return;
 
+        if (board.length === 0 && this.preflopAdvisor && this._isMyTurn()) {
+            var callAmt = this._getCallAmt();
+            var facingRaise = callAmt !== null && callAmt > 0;
+            var position = this._getPosition();
+            var advice = this.preflopAdvisor.advise(holeCards, facingRaise, position);
+            if (facingRaise && advice.action === 'Fold') {
+                var pot = this._getPot();
+                if (pot !== null && !isNaN(pot) && pot > 0) {
+                    var breakEven = callAmt / (pot + callAmt);
+                    if (winPct >= breakEven) {
+                        advice.action = 'Call';
+                        advice.color  = '#ffd600';
+                    }
+                }
+            }
+            var adviseLine = document.createElement('div');
+            adviseLine.style.cssText = 'color:' + advice.color + ';font-weight:bold;text-align:center';
+            var posLabel = position ? '[' + position + '] ' : '';
+            var callLabel = facingRaise ? ' (' + callAmt + ')' : '';
+            adviseLine.innerText = posLabel + advice.hand + ' · ' + advice.action + callLabel;
+            div.appendChild(adviseLine);
+            var statsLine = document.createElement('div');
+            statsLine.innerText = winStr + outStr + potStr;
+            div.appendChild(statsLine);
+        } else {
+            div.innerText = winStr + outStr + potStr;
+        }
+
         var tableRect = tableDiv.getBoundingClientRect();
         var youRect   = youDiv.getBoundingClientRect();
 
+        var topOffset = (board.length === 0 && this.preflopAdvisor) ? 42 : 28;
         div.style.left = (youRect.left - tableRect.left + youRect.width / 2 - 90) + 'px';
-        div.style.top  = (youRect.top  - tableRect.top  - 28) + 'px';
+        div.style.top  = (youRect.top  - tableRect.top  - topOffset) + 'px';
 
         hudDiv.appendChild(div);
     }
 
-    _potOddsStr(winPct) {
-        var pot = null;
-        var callAmt = null;
+    _getMyName() {
+        try {
+            var el = document.querySelector('.you-player .table-player-name');
+            if (el) {
+                var text = el.innerText.trim();
+                if (text.includes(' @ ')) text = text.split(' @ ')[0].trim();
+                return text;
+            }
+        } catch(e) {}
+        return null;
+    }
 
+    _getPosition() {
+        var order = this.tracker.playerOrder;
+        if (!order || order.length === 0) return null;
+        var myName = this._getMyName();
+        if (!myName) return null;
+        var myNameUnderscore = myName.replaceAll(' ', '__');
+        var idx = -1;
+        for (var i = 0; i < order.length; i++) {
+            if (order[i] === myName || order[i] === myNameUnderscore ||
+                order[i].replaceAll(' ', '__') === myNameUnderscore) {
+                idx = i; break;
+            }
+        }
+        if (idx === -1) return null;
+        var n = order.length;
+        if (idx === 0)     return 'SB';
+        if (idx === 1)     return 'BB';
+        if (idx === n - 1) return 'BTN';
+        if (idx === n - 2) return 'CO';
+        if (idx === n - 3 && n >= 6) return 'HJ';
+        return 'EP';
+    }
+
+    _isMyTurn() {
+        try {
+            var buttons = document.querySelectorAll('button');
+            for (var i = 0; i < buttons.length; i++) {
+                var txt = (buttons[i].innerText || '').trim().toLowerCase();
+                if (txt === 'fold' || txt === 'check' ||
+                    txt.indexOf('call') === 0 || txt.indexOf('bet') === 0 || txt.indexOf('raise') === 0) {
+                    return true;
+                }
+            }
+        } catch(e) {}
+        return false;
+    }
+
+    _getPot() {
         try {
             var potEl = document.querySelector('.table-pot-size');
-            if (potEl) pot = parseFloat(potEl.innerText.replace(/[^0-9.]/g, ''));
+            if (potEl) return parseFloat(potEl.innerText.replace(/[^0-9.]/g, ''));
         } catch(e) {}
+        return null;
+    }
 
+    _getCallAmt() {
         try {
             var buttons = document.querySelectorAll('button');
             for (var i = 0; i < buttons.length; i++) {
                 var txt = (buttons[i].innerText || '').trim().toLowerCase();
                 if (txt.indexOf('call') === 0) {
                     var amt = txt.replace(/[^0-9.]/g, '');
-                    if (amt) { callAmt = parseFloat(amt); break; }
+                    if (amt) return parseFloat(amt);
                 }
             }
         } catch(e) {}
+        return null;
+    }
+
+    _potOddsStr(winPct) {
+        var pot = this._getPot();
+        var callAmt = this._getCallAmt();
 
         if (pot === null || callAmt === null || isNaN(pot) || isNaN(callAmt) || callAmt <= 0) {
             return '--';
@@ -576,12 +665,13 @@ class HandBuilder{ //gets called by execute()
 	}
 	
 	addHand(jsonLog){
-		
+        console.log('[HUD] addHand called');
 		this.currentHand = [""]; //reset log for a new hand
 		this.currentHandForLogging = [""];
 		//this.stackLines = [""];
 		var lastHandOriginal = this.extractLastHand(jsonLog);
-        if(lastHandOriginal.length == 0){return;}
+        console.log('[HUD] extractLastHand returned ' + lastHandOriginal.length + ' lines');
+        if(lastHandOriginal.length == 0){console.log('[HUD] empty hand, returning'); return;}
         //convert to donkhouse format here
         var lastHand = this.convertToDonkhouseFormat(lastHandOriginal);
 		
@@ -611,8 +701,8 @@ class HandBuilder{ //gets called by execute()
 		
 		this.currentHand[0] = this.stackLines.length.toString()+" players are in the hand";
 		this.currentHandForLogging[0] = this.stackLines.length.toString()+" players are in the hand";
-		//console.log(this.currentHand);
-		//console.log(this.stackLines);
+        console.log('[HUD] currentHand[0]=' + this.currentHand[0]);
+        console.log('[HUD] currentHand:', JSON.stringify(this.currentHand));
 		this.createHand(this.currentHand, this.dealtLine); //passes list of hand lines
 		if(this.recordingHands){
 			//console.log("record");
@@ -1038,10 +1128,8 @@ class HandBuilder{ //gets called by execute()
 function getStats(aggregator){
 	
 	chrome.storage.local.get(["stats"], function(result) {
-		aggregator.stats = result["stats"];//["stats"];
-		//console.log("STATS");
-		//console.log(aggregator.stats);
-		//console.log(JSON.stringify(aggregator.stats));
+		aggregator.stats = result["stats"];
+        console.log('[HUD] getStats loaded:', JSON.stringify(result["stats"]));
 		aggregator.unpackStats();
 	});
 	
@@ -1216,11 +1304,16 @@ class Aggregator{
 	}
 	
 	requestServerAnalysis(handLines){
-		
+        console.log('[HUD] requestServerAnalysis: ' + handLines.length + ' lines, stats keys=' + Object.keys(this.stats));
+        console.log('[HUD] handLines:', JSON.stringify(handLines));
 		chrome.runtime.sendMessage({"handLines": handLines, "stats": this.stats, "command": "requestServerAnalysis", "you": this.you}, function(response) {
-			console.log(response.confirmation);
+            if (response) {
+                console.log('[HUD] requestServerAnalysis response:', response.confirmation);
+            } else {
+                console.log('[HUD] requestServerAnalysis: no response (runtime error?)', chrome.runtime.lastError);
+            }
 		});
-		
+
 	}
 	
 	assimilate(newData){
@@ -1293,19 +1386,21 @@ class LogScraper{
             var jsonLog = text;
         }
 		
-		var searchDepth = 10;
-		if(jsonLog.logs.length <= searchDepth){searchDepth = jsonLog.logs.length-1;}
-		
-        for(var i = searchDepth; i >= 0; i--){ //we can probably drop the starting value of i way down
+		var searchDepth = jsonLog.logs.length - 1;
+        console.log('[HUD] processLog: ' + jsonLog.logs.length + ' entries, lastHandNumber=' + self.lastHandNumber);
+
+        for(var i = searchDepth; i >= 0; i--){
             var message = jsonLog.logs[i].msg;
-            //console.log(message);
-            if(message.includes("ending hand #")){ //if a hand is ending
+            if(message.includes("ending hand #")){
 				self.lastCreatedAt = jsonLog.logs[i].created_at;
-                var number = message.split("#")[1].split(" ")[0];
-                if(number > self.lastHandNumber){ //if it's a new hand that we haven't seen before
+                var number = parseInt(message.split("#")[1].split(" ")[0], 10);
+                console.log('[HUD] found ending hand #' + number + ', lastHandNumber=' + self.lastHandNumber);
+                if(number > self.lastHandNumber){
                     self.lastHandNumber = number;
-                    //console.log(self.lastHandNumber);
+                    console.log('[HUD] new hand #' + number + ' — calling addHand');
                     builder.addHand(jsonLog);
+                } else {
+                    console.log('[HUD] hand #' + number + ' already seen, skipping');
                 }
             }
         }
@@ -1316,10 +1411,11 @@ class LogScraper{
 	setInitialCreatedAt(text, self){
         if(Object.prototype.toString.call(text) === "[object String]"){
             var jsonLog = JSON.parse(text);
-        }else if(Object.prototype.toString.call(x) === "[object Object]"){ //it looks like for some people the log might get returned as an object and not a string.
+        }else if(Object.prototype.toString.call(text) === "[object Object]"){
             var jsonLog = text;
         }
 		self.lastCreatedAt = jsonLog.logs[0].created_at;
+        liveTracker.update(jsonLog);
 	}
 	
 	getFullLog(){
@@ -1398,10 +1494,11 @@ chrome.runtime.onMessage.addListener(
 				chrome.storage.local.set({'stats':{}}, function(data) {
 					console.log("success");
 				});
-				
 				console.log("cleared");
 				getStats(aggregator);
 				sendResponse({"confirmation": "success"});
+			} else {
+				sendResponse({"confirmation": "cancelled"});
 			}
 		}
 		if(request.command == "popupDonation"){
@@ -1433,11 +1530,12 @@ var builder = new HandBuilder(aggregator, settings);
 var hud = new HUD(aggregator, settings, builder);
 var scraper = new LogScraper();
 
-var _evaluator   = new HandEvaluator();
-var _monte       = new MonteCarloEngine(_evaluator);
-var _outsCounter = new OutsCounter(_evaluator);
-var liveTracker  = new LiveHandTracker();
-var oddsPanel    = new OddsPanel(liveTracker, _monte, _outsCounter);
+var _evaluator      = new HandEvaluator();
+var _monte          = new MonteCarloEngine(_evaluator);
+var _outsCounter    = new OutsCounter(_evaluator);
+var _preflopAdvisor = new PreflopAdvisor();
+var liveTracker     = new LiveHandTracker();
+var oddsPanel       = new OddsPanel(liveTracker, _monte, _outsCounter, _preflopAdvisor);
 
 function tester(){
     scraper.getLog();
